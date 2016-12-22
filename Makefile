@@ -54,11 +54,11 @@ ifeq ($(DTL_T10000),1)
 else
 	EE_LIBS += -lpad
 endif
-EE_LIBS += -lgskit_toolkit -lgskit -ldmakit -lc -lkernel -lmc -lpatches -lerl -lcdvd -lz
+EE_LIBS += -lgskit_toolkit -lgskit -ldmakit -lc -lkernel -lmc -lpatches -lerl -lcdvd -lz -lkbd
 EE_LDFLAGS += -L$(PS2SDK)/ee/lib -L$(PS2SDK)/ports/lib -L$(GSKIT)/lib -s
 EE_INCS += -I$(GSKIT)/include -I$(PS2SDK)/ports/include
 
-IRX_OBJS += usbd_irx.o usb_mass_irx.o iomanX_irx.o
+IRX_OBJS += usbd_irx.o usb_mass_irx.o iomanX_irx.o ps2kbd_irx.o
 ifeq ($(DTL_T10000),1)
 	IRX_OBJS += sio2man_irx.o mcman_irx.o mcserv_irx.o padman_irx.o
 endif
@@ -69,9 +69,13 @@ all: modules version main
 
 modules:
 	# IRX Modules
-	bin2o resources/iomanX.irx iomanX_irx.o _iomanX_irx
-	bin2o resources/usbd.irx usbd_irx.o _usbd_irx
+#	bin2o resources/iomanX.irx iomanX_irx.o _iomanX_irx
+#	bin2o resources/usbd.irx usbd_irx.o _usbd_irx
 	bin2o resources/usb_mass.irx usb_mass_irx.o _usb_mass_irx
+	bin2o $(PS2SDK)/iop/irx/iomanX.irx iomanX_irx.o _iomanX_irx
+	bin2o $(PS2SDK)/iop/irx/usbd.irx usbd_irx.o _usbd_irx
+#	bin2o $(PS2SDK)/iop/irx/usb_mass.irx usb_mass_irx.o _usb_mass_irx
+	bin2o $(PS2SDK)/iop/irx/ps2kbd.irx ps2kbd_irx.o _ps2kbd_irx
 ifeq ($(DTL_T10000),1)
 	bin2o $(PS2SDK)/iop/irx/freesio2.irx sio2man_irx.o _sio2man_irx
 	bin2o $(PS2SDK)/iop/irx/mcman.irx mcman_irx.o _mcman_irx

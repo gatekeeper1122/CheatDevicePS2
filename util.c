@@ -14,6 +14,7 @@
 #include <kernel.h>
 #include <sbv_patches.h>
 #include <libmc.h>
+#include <libkbd.h>
 
 #ifdef _DTL_T10000
 extern u8  _sio2man_irx_start[];
@@ -88,6 +89,7 @@ void loadModules()
     SifExecModuleBuffer(_iomanX_irx_start, _iomanX_irx_size, 0, NULL, &ret);
     SifExecModuleBuffer(_usbd_irx_start, _usbd_irx_size, 0, NULL, &ret);
     SifExecModuleBuffer(_usb_mass_irx_start, _usb_mass_irx_size, 0, NULL, &ret);
+    SifExecModuleBuffer(_ps2kbd_irx_start, _ps2kbd_irx_size, 0, NULL, &ret);
 
     #ifdef _DTL_T10000
     mcInit(MC_TYPE_XMC);
@@ -98,6 +100,11 @@ void loadModules()
     padInit(0);
     padPortOpen(0, 0, padBuff);
     padSetMainMode(0, 0, PAD_MMODE_DIGITAL, PAD_MMODE_LOCK);
+
+    ret = PS2KbdInit();
+    printf("keyboard init returned %d\n", ret);
+    PS2KbdSetReadmode(PS2KBD_READMODE_NORMAL);
+    PS2KbdSetRepeatRate(10);
 }
 
 void handlePad()
@@ -110,15 +117,39 @@ void handlePad()
     static u32 time_held = 0;
     static int selected = 0;
     static int selectedDevice = 0;
+    //PS2KbdRawKey key;
+    unsigned int k = 0;
+    static char code[10];
 
     state = padGetState(0, 0);
     while((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1))
         state = padGetState(0, 0);
 
     padRead(0, 0, &padStat);
+
+    if(PS2KbdRead(&k) != 0)
+    {
+        if(k == PS2KBD_ESCAPE_KEY)
+        {
+            PS2KbdRead(&k);
+            k += 0x100;
+        }
+
+        if     (k == 0x129) padStat.btns = ~PAD_RIGHT;
+        else if(k == 0x12A) padStat.btns = ~PAD_LEFT;
+        else if(k == 0x12B) padStat.btns = ~PAD_DOWN;
+        else if(k == 0x12C) padStat.btns = ~PAD_UP;
+        else if(k == 0x00A) padStat.btns = ~PAD_CROSS;
+        else if(k == 0x11B) padStat.btns = ~PAD_CIRCLE;
+
+        sprintf(code, "%03X", k);
+    }
+
+    PS2KbdFlushBuffer();
+
     pad_pressed = (0xFFFF ^ padStat.btns) & ~old_pad;
     old_pad = 0xFFFF ^ padStat.btns;
-    
+
     // pad_rapid will have an initial delay when a button is held
     if((0xFFFF ^ padStat.btns) && (0xFFFF ^ padStat.btns) == old_pad)
     {
@@ -129,6 +160,8 @@ void handlePad()
     }
     else
         time_held = 0;
+
+    graphicsDrawTextCentered(320, code, WHITE);
 
     menuID_t currentMenu = menuGetActive();
     
