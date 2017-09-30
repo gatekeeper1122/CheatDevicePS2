@@ -20,87 +20,35 @@ static cheatsGame_t *game = NULL;
 static cheatsCheat_t *cheat = NULL;
 static u64 *codeLine = NULL;
 
-static int numGames = 0;
-static int numCheats = 0;
-static int numCodeLines = 0;
-
 static u8 *tokens = NULL;
 
-int getToken(const char *line);
-int parseLine(const char *line);
+static void countTokens(const char *text, size_t length, int *numGames, int *numCheats, int *numCodeLines);
+static int getToken(const char *line);
+static int parseLine(const char *line);
 
-static void countTokens(const char *text, size_t length, int *numGames, int *numCheats, int *numCodeLines)
-{
-    const char *endPtr = text + length;
-    const char *end;
-    char line[255];
-    int lineLen;
-    int token;
-    unsigned int tokenOffset = 0;
-    if(!text || !numGames || !numCheats || !numCodeLines)
-        return;
-        
-    while(text < endPtr)
-    {
-        float progress = (1.0 - ((endPtr - text)/(float)length))/2.0;
-        graphicsDrawLoadingBar(100, 375, progress);
-        graphicsRenderNow();
-        end = strchr(text, '\n');
-        if(!end)
-            end = endPtr;
-        
-        lineLen = end - text;
-        if(lineLen)
-        {
-            strncpy(line, text, 255);
-            if(line[lineLen-1] == '\r')
-                line[lineLen-1] = '\0';
-            
-            line[lineLen] = '\0';
-            
-            token = getToken(line);
-            tokens[tokenOffset++] = token;
-
-            switch(token)
-            {
-                case TOKEN_TITLE:
-                    *numGames += 1;
-                    break;
-                case TOKEN_CHEAT:
-                    *numCheats += 1;
-                    break;
-                case TOKEN_CODE:
-                    *numCodeLines += 1;
-                    break;
-                default:
-                    break;
-            }
-        }
-        text += lineLen + 1;
-    }
-}
-
-// Returns number of games in cheat file.
-int textCheatsOpenFile(const char *path)
+cheatsGame_t* textCheatsOpen(const char *path, unsigned int *numGamesRead)
 {
     FILE *txtFile;
     char *text;
     char *end;
     char *endPtr;
     char *buff;
-    char line[255];
     unsigned int lineLen;
     size_t txtLen;
+
+    int numGames, numCheats, numCodeLines;
     
     if(!path)
-        return 0;
+        return NULL;
+    if(!numGamesRead)
+        return NULL;
     
     txtFile = fopen(path, "r");
     fseek(txtFile, 0, SEEK_END);
     txtLen = ftell(txtFile);
     fseek(txtFile, 0, SEEK_SET);
     
-    buff = malloc(txtLen);
+    buff = calloc(txtLen + 1, 1);
     text = buff;
     endPtr = text + txtLen;
     fread(text, 1, txtLen, txtFile);
@@ -128,13 +76,12 @@ int textCheatsOpenFile(const char *path)
         
         if(lineLen)
         {
-            strncpy(line, text, 255);
-            if(line[lineLen-1] == '\r')
-                line[lineLen-1] = '\0';
-            
-            line[lineLen] = '\0';
-            
-            parseLine(line);
+            // remove trailing whitespace;
+            char *c;
+            for(c = text + lineLen; isspace(*c); --c)
+                *c = '\0';
+
+            parseLine(text);
         }
         
         text += lineLen + 1;
@@ -142,23 +89,71 @@ int textCheatsOpenFile(const char *path)
     
     free(buff);
     free(tokens);
-    
-    return numGames;
-}
 
-// Get data structure of loaded cheat file. Returns null on error.
-cheatsGame_t *textCheatsGetCheatStruct()
-{
+    *numGamesRead = numGames;
+    
     return gamesHead;
 }
-// Free cheat file from memory.
-int textCheatsClose()
+
+int textCheatsSave(const char *path)
 {
     return 1;
 }
 
+static void countTokens(const char *text, size_t length, int *numGames, int *numCheats, int *numCodeLines)
+{
+    const char *endPtr = text + length;
+    const char *end;
+    char line[255];
+    int lineLen;
+    int token;
+    unsigned int tokenOffset = 0;
+    if(!text || !numGames || !numCheats || !numCodeLines)
+        return;
+        
+    while(text < endPtr)
+    {
+        float progress = (1.0 - ((endPtr - text)/(float)length))/2.0;
+        graphicsDrawLoadingBar(100, 375, progress);
+        graphicsRenderNow();
+        end = strchr(text, '\n');
+        if(!end)
+            end = endPtr;
+        
+        lineLen = end - text;
+        if(lineLen)
+        {
+            strncpy(line, text, 255);
+
+            // remove trailing whitespace;
+            char *c;
+            for(c = line + lineLen; isspace(*c); --c)
+                *c = '\0';
+            
+            token = getToken(line);
+            tokens[tokenOffset++] = token;
+
+            switch(token)
+            {
+                case TOKEN_TITLE:
+                    *numGames += 1;
+                    break;
+                case TOKEN_CHEAT:
+                    *numCheats += 1;
+                    break;
+                case TOKEN_CODE:
+                    *numCodeLines += 1;
+                    break;
+                default:
+                    break;
+            }
+        }
+        text += lineLen + 1;
+    }
+}
+
 // Determine token type for line.
-int getToken(const char *line)
+static int getToken(const char *line)
 {
     const char *c;
     int numDigits = 0, ret;
@@ -192,12 +187,12 @@ int getToken(const char *line)
     
     else
         ret = TOKEN_CHEAT;
-    
+
     return ret;
 }
 
 // Parse line and process token.
-int parseLine(const char *line)
+static int parseLine(const char *line)
 {
     static unsigned int tokenOffset = 0;
     int token;

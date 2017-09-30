@@ -1,11 +1,11 @@
 /*
  * Save Manager
- * Backup and restore game saves from a memory card and flash drive. Saves are
- * backed up to PSU files when stored on a flash drive.
+ * Backup and restore game saves from a memory card and flash drive.
  */
 
 #ifndef SAVES
 #define SAVES
+
 #include <tamtypes.h>
 
 #define NUM_SAVE_DEVICES    3
@@ -15,9 +15,6 @@
 
 typedef u8 device_t;
 typedef struct gameSave gameSave_t;
-
-int initSaveMan();
-int killSaveMan();
 
 // Create a menu with save titles.
 void savesLoadSaveMenu(device_t dev);

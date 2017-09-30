@@ -11,6 +11,7 @@
 #include <string.h>
 #include <malloc.h>
 #include <erl.h>
+#include <floatlib.h>
 
 static cheatsGame_t *gamesHead = NULL;
 static cheatsGame_t *activeGame = NULL;
@@ -22,53 +23,47 @@ static int numGames = 0;
 static int numCheats = 0;
 static int numEnabledCheats = 0;
 static int numEnabledCodes = 0;
-static int initialized = 0;
 
 extern unsigned char _engine_erl_start[];
 
-int initCheatMan()
+typedef struct cheatDatabaseHandler {
+    char name[28]; // cheat database format name
+    char extention[4]; // file extention
+    
+    cheatsGame_t* (*open)(const char *path, unsigned int *numGames);
+    int (*save)(const char *path);
+} cheatDatabaseHandler_t;
+
+static cheatDatabaseHandler_t CDBHandler = {"Binary Database (.cdb)", "cdb", cdbOpen, cdbSave};
+static cheatDatabaseHandler_t TXTHandler = {"Text File (.txt)", "txt", textCheatsOpen, textCheatsSave};
+
+int killCheats()
 {
-    if(!initialized)
+    int first = 1;
+    printf("\n ** Killing Cheats **\n");
+
+    cheatsGame_t *game = gamesHead;
+    while(game)
     {
-        printf("\n ** Initializing Cheat Manager **\n");
-        initialized = 1;
-        return 1;
-    }
-    else
-        return 0;
-}
+        cheatsGame_t *next = game->next;
 
-int killCheatMan()
-{
-    if(initialized)
-    {
-        int first = 1;
-        printf("\n ** Killing Cheat Manager **\n");
-        dbCloseDatabase();
-
-        cheatsGame_t *game = gamesHead;
-        while(game)
-        {
-            cheatsGame_t *next = game->next;
-
-            printf("Freeing %s\n", game->title);
-            if(game->cheats != NULL) {
-                if(first && dbType == BINARY) // Binay DB has allocates cheats structs and code lines once.
-                {
-                    free(game->cheats);
-                    free(game->cheats->codeLines);
-                    first = 0;
-                }
-
-                free(game->cheats->codeLines);
+        if(game->cheats != NULL) {
+            if(first && dbType == BINARY) // Binary DB allocates cheats structs and code lines once.
+            {
                 free(game->cheats);
+                free(game->cheats->codeLines);
+                first = 0;
             }
 
-            game = next;
+            free(game->cheats->codeLines);
+            free(game->cheats);
         }
-        
-        free(gamesHead);
+
+        game = next;
     }
+    
+    hashDestroyTable(gameHashes);
+    free(gamesHead);
 
     return 1;
 }
@@ -98,86 +93,84 @@ int cheatsLoadHistory()
     menuItem_t *lastGameMenu;
     cheatsCheat_t *cheat;
 
-    if(initialized)
+    if(!gameHashes)
+        return 0;
+
+    historyFile = fopen("CheatHistory.bin", "rb");
+
+    if(historyFile)
     {
-        if(!gameHashes)
-            return 0;
+        fseek(historyFile, 0, SEEK_END);
+        historyLength = ftell(historyFile);
+        fseek(historyFile, 0, SEEK_SET);
 
-        historyFile = fopen("CheatHistory.bin", "rb");
+        fread(&lastGameHash, 4, 1, historyFile);
+        lastGameMenu = (menuItem_t *)hashFind(gameHashes, lastGameHash);
 
-        if(historyFile)
+        if(lastGameMenu != NULL)
         {
-            fseek(historyFile, 0, SEEK_END);
-            historyLength = ftell(historyFile);
-            fseek(historyFile, 0, SEEK_SET);
+            cheatsSetActiveGame((cheatsGame_t *) lastGameMenu->extra);
+            cheatHashes = hashNewTable(activeGame->numCheats);
+            populateCheatHashTable();
 
-            fread(&lastGameHash, 4, 1, historyFile);
-            lastGameMenu = (menuItem_t *)hashFind(gameHashes, lastGameHash);
-
-            if(lastGameMenu != NULL)
+            for(i = 0; i < historyLength - 4; i+= 4)
             {
-                cheatsSetActiveGame((cheatsGame_t *) lastGameMenu->extra);
-                cheatHashes = hashNewTable(activeGame->numCheats * 1.6);
-                populateCheatHashTable();
+                fread(&cheatHash, 4, 1, historyFile);
+                cheat = (cheatsCheat_t *)hashFind(cheatHashes, cheatHash);
 
-                for(i = 0; i < historyLength - 4; i+= 4)
-                {
-                    fread(&cheatHash, 4, 1, historyFile);
-                    cheat = (cheatsCheat_t *)hashFind(cheatHashes, cheatHash);
-
-                    if(cheat != NULL)
-                        cheatsToggleCheat(cheat);
-                }
-
-                menuSetActiveItem(lastGameMenu);
-
-                free(cheatHashes);
+                if(cheat != NULL)
+                    cheatsToggleCheat(cheat);
             }
 
-            fclose(historyFile);
+            menuSetActiveItem(lastGameMenu);
+            hashDestroyTable(cheatHashes);
         }
 
-        free(gameHashes);
-        return 1;
+        fclose(historyFile);
     }
 
-    return 0;
+    return 1;
+}
+
+// Determine cheat database handler by filename.
+static cheatDatabaseHandler_t *getCheatDatabaseHandler(const char *path)
+{
+    const char *extension;
+    
+    if(!path)
+        return NULL;
+    
+    extension = getFileExtension(path);
+    
+    if(strcmp(extension, CDBHandler.extention) == 0)
+        return &CDBHandler;
+    else if(strcmp(extension, TXTHandler.extention) == 0)
+        return &TXTHandler;
+    else
+        return NULL;
 }
 
 // CheatDB --> Game --> Cheat --> Code
 int cheatsOpenDatabase(const char* path)
 {
-    const char *ext;
-    
-    if(initialized)
+    cheatDatabaseHandler_t *handler;
+
+    handler = getCheatDatabaseHandler(path);
+
+    if(handler)
     {
-        ext = path + strlen(path) - 4;
-        
-        if(strncmp(ext, ".cdb", 4) == 0)
-            dbType = BINARY;
-        else if(strncmp(ext, ".txt", 4) == 0)
-            dbType = TEXT;
-        
-        switch(dbType)
-        {
-            case TEXT:
-                numGames = textCheatsOpenFile(path);
-                gamesHead = textCheatsGetCheatStruct();
-                textCheatsClose();
-                break;
-
-            case BINARY:
-                numGames = dbOpenDatabase(path);
-                gamesHead = dbGetCheatStruct();
-                dbCloseDatabase();
-                break;
-
-            default:
-                break;
-        }
+        gamesHead = handler->open(path, &numGames);
+        printf("loaded %d games\n", numGames);
     }
-    
-    printf("loaded %d games\n", numGames);
+    else
+    {
+        char error[255];
+        sprintf(error, "Unsupported cheat database filetype: \"%s\"!", getFileExtension(path));
+        displayError(error);
+
+        // TODO: Use default empty database
+        numGames = 0;
+    }
 
     return numGames;
 }
@@ -186,14 +179,14 @@ int cheatsSaveDatabase(const char* path, cheatDatabaseType_t t);
 
 int cheatsLoadGameMenu()
 {
-    if(initialized && gamesHead!=NULL)
+    if(gamesHead!=NULL)
     {
         cheatsGame_t *node = gamesHead;
         menuItem_t *items = calloc(numGames, sizeof(menuItem_t));
         menuItem_t *item = items;
         unsigned int hash;
 
-        gameHashes = hashNewTable(numGames * 1.6);
+        gameHashes = hashNewTable(numGames);
         
         while(node)
         {
@@ -205,7 +198,7 @@ int cheatsLoadGameMenu()
             hash = hashFunction(item->text, strlen(item->text));
             hashAdd(gameHashes, item, hash);
 
-            menuAppendItem(item);
+            menuInsertItem(item);
             node = node->next;
             item++;
         }
@@ -218,7 +211,7 @@ int cheatsLoadGameMenu()
 
 cheatsGame_t* cheatsLoadCheatMenu(cheatsGame_t* game)
 {
-    if(initialized && gamesHead!=NULL && game)
+    if(gamesHead!=NULL && game)
     {
         /* Build the menu */
         cheatsCheat_t *cheat = game->cheats;
@@ -227,17 +220,25 @@ cheatsGame_t* cheatsLoadCheatMenu(cheatsGame_t* game)
         printf("%d cheats\n", game->numCheats);
         while(cheat != NULL)
         {
-            if(cheat->type == CHEATNORMAL)
-                item->type = NORMAL;
+            if(!cheat->skip)
+            {
+                if(cheat->type == CHEATNORMAL)
+                    item->type = NORMAL;
+                else
+                    item->type = HEADER;
+
+                item->text = calloc(1, strlen(cheat->title) + 1);
+                strcpy(item->text, cheat->title);
+
+                item->extra = (void *)cheat;
+
+                menuInsertItem(item);
+            }
             else
-                item->type = HEADER;
+            {
+                printf("SKIPPING A CHEAT!!!\n");
+            }
 
-            item->text = calloc(1, strlen(cheat->title) + 1);
-            strcpy(item->text, cheat->title);
-
-            item->extra = (void *)cheat;
-
-            menuAppendItem(item);
             cheat = cheat->next;
             item++;
         }
@@ -251,17 +252,67 @@ cheatsGame_t* cheatsLoadCheatMenu(cheatsGame_t* game)
 
 int cheatsLoadCodeMenu(const char* game, const char* cheat);
 
-int cheatsAddGame(const char* title)
+int cheatsAddGame()
 {
     cheatsGame_t *node = gamesHead;
     cheatsGame_t *newGame = calloc(1, sizeof(cheatsGame_t));
     if(!newGame)
         return 0;
 
+    if(displayInputMenu(newGame->title, 80, NULL, "Enter Game Title") == 0)
+    {
+        free(newGame);
+        return 0;
+    }
+
     while(node++->next);
 
     node->next = newGame;
-    strncpy(newGame->title, title, 80);
+
+    numGames++;
+
+    menuItem_t *item = calloc(1, sizeof(menuItem_t));
+    item->type = NORMAL;
+    item->text = calloc(1, strlen(newGame->title) + 1);
+    item->extra = newGame;
+    strcpy(item->text, newGame->title);
+
+    menuInsertItem(item);
+    menuSetActiveItem(item);
+
+    return 1;
+}
+
+int cheatsRenameGame()
+{
+    if(menuGetActive() != GAMEMENU)
+        return 0;
+
+    cheatsGame_t *selectedGame = menuGetActiveItemExtra();
+
+    if(displayInputMenu(selectedGame->title, 80, selectedGame->title, "Enter Game Title") == 0)
+        return 0;
+
+    menuRenameActiveItem(selectedGame->title);
+
+    return 1;
+}
+
+int cheatsDeleteGame()
+{
+    if(menuGetActive() != GAMEMENU)
+        return 0;
+
+    cheatsGame_t *selectedGame = menuGetActiveItemExtra();
+    cheatsDeactivateGame(selectedGame);
+
+    // With binary databases, the game structs are allocated as one chunk,
+    // so we will use a NULL title to denotate a deleted game.
+    selectedGame->title[0] = '\0';
+
+    menuRemoveActiveItem();
+
+    numGames--;
 
     return 1;
 }
@@ -360,10 +411,9 @@ int cheatsIsActiveGame(const cheatsGame_t *game)
     return game == activeGame;
 }
 
-int cheatsSetActiveGame(cheatsGame_t *game)
+int cheatsDeactivateGame(cheatsGame_t *game)
 {
-    /* Disable all active cheats if a new game was selected */
-    if(activeGame != NULL && game != activeGame)
+    if(game)
     {
         cheatsCheat_t *cheat = activeGame->cheats;
         while(cheat)
@@ -375,6 +425,13 @@ int cheatsSetActiveGame(cheatsGame_t *game)
         numEnabledCheats = 0;
         numEnabledCodes = 0;
     }
+}
+
+int cheatsSetActiveGame(cheatsGame_t *game)
+{
+    /* Disable all active cheats if a new game was selected */
+    if(activeGame != NULL && game != activeGame)
+        cheatsDeactivateGame(game);
 
     activeGame = game;
 
@@ -410,12 +467,15 @@ void SetupERL()
     printf("%08x %s\n", (u32)sym->address, name); \
     var = (typeof(var))sym->address
 
+    GET_SYMBOL(get_max_hooks, "get_max_hooks");
+    GET_SYMBOL(get_num_hooks, "get_num_hooks");
+    GET_SYMBOL(add_hook, "add_hook");
+    GET_SYMBOL(clear_hooks, "clear_hooks");
     GET_SYMBOL(get_max_codes, "get_max_codes");
     GET_SYMBOL(set_max_codes, "set_max_codes");
     GET_SYMBOL(get_num_codes, "get_num_codes");
     GET_SYMBOL(add_code, "add_code");
     GET_SYMBOL(clear_codes, "clear_codes");
-    GET_SYMBOL(syscallHook, "syscallHook");
 
     printf("Symbols loaded.\n");
 }
@@ -427,9 +487,11 @@ static void readCodes(cheatsCheat_t *cheats)
     int nextCodeCanBeHook = 1;
     cheatsCheat_t *cheat = cheats;
 
+    printf("readCodes(%x)\n", cheats);
+
     while(cheat)
     {
-        if(cheat->enabled)
+        if(cheat->enabled && !cheat->skip)
         {
             if(historyFile)
             {
@@ -446,7 +508,12 @@ static void readCodes(cheatsCheat_t *cheats)
                 if(((addr & 0xfe000000) == 0x90000000) && nextCodeCanBeHook == 1)
                 {
                     printf("hook: %08X %08X\n", addr, val);
-                    //add_hook(addr, val);
+                    add_hook(addr, val);
+                }
+                if((addr & 0xf0000000) == 0xf0000000)
+                {
+                    // ignore F-type enable codes
+                    continue;
                 }
                 else
                 {
@@ -465,6 +532,31 @@ static void readCodes(cheatsCheat_t *cheats)
     }
 }
 
+/* TODO: Only reads one enable cheat for now. */
+void readEnableCodes(cheatsCheat_t *enableCheats)
+{
+    int i;
+    u32 addr, val;
+    cheatsCheat_t *cheat = enableCheats;
+
+    if(!cheat)
+        return;
+
+    printf("readEnableCodes(%x)\n", enableCheats);
+
+    for(i = 0; i < cheat->numCodeLines; ++i)
+    {
+        addr = (u32)*((u32 *)cheat->codeLines + 2*i);
+        val = (u32)*((u32 *)cheat->codeLines + 2*i + 1);
+
+        if((addr & 0xfe000000) == 0x90000000)
+        {
+            printf("hook: %08X %08X\n", addr, val);
+            add_hook(addr, val);
+        }
+    }
+}
+
 void cheatsInstallCodesForEngine()
 {
     if(activeGame != NULL)
@@ -478,6 +570,8 @@ void cheatsInstallCodesForEngine()
             fwrite(&gameHash, 4, 1, historyFile);
         }
 
+        printf("Reading enable cheats\n");
+        readEnableCodes(activeGame->enableCheats);
         printf("Reading cheats\n");
         readCodes(activeGame->cheats);
         printf("Done readin cheats\n");

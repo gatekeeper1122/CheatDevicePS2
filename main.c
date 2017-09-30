@@ -14,17 +14,15 @@
 int main(int argc, char *argv[])
 {
     loadModules();
-    initGraphicsMan();
-    initSettingsMan();
-    initCheatMan();
-    initMenuMan();
+    initGraphics();
+    initSettings();
+    initMenus();
     
     if(!cheatsOpenDatabase(settingsGetDatabasePath()))
     {
         char error[255];
         sprintf(error, "Error loading cheat database \"%s\"!", settingsGetDatabasePath());
-        char *items[] = {"OK"};
-        displayPromptMenu(items, 1, error);
+        displayError(error);
 
         // Go back to OSD
         LoadExecPS2("rom:OSDSYS", 0, NULL);
@@ -45,7 +43,7 @@ int main(int argc, char *argv[])
         graphicsRender();
     }
     
-    killCheatMan();
+    killCheats();
     SleepThread();
     return 0;
 }

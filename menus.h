@@ -15,31 +15,32 @@ typedef struct menuItem {
     menutype_t type;
     char *text;
     void *extra; // Optional: Associate additional data with the menuItem.
-    
-    struct menuItem *prev;
-    struct menuItem *next;
 } menuItem_t;
 
 typedef struct menuState {
     menuID_t identifier;
+    int isSorted;
     char *text;
     cheatsGame_t *game; // Optional: Cheat menu uses this to associate entry with a game.
     
-    menuItem_t *head; // linked list
-    menuItem_t *current;
-    menuItem_t *tail;
+    menuItem_t **items;
+    unsigned int currentItem;
+    unsigned int numItems;
+    unsigned int chunks;
 } menuState_t;
 
-int initMenuMan();
-int killMenuMan();
+int initMenus();
+int killMenus();
 
 int menuSetActive(menuID_t id);
 menuID_t menuGetActive();
 
-int menuAppendItem(menuItem_t *item);
+int menuInsertItem(menuItem_t *item);
 int menuRemoveActiveItem();
 int menuRemoveAllItems();
 int menuSetActiveItem(menuItem_t *item);
+int menuRenameActiveItem(const char *str);
+void *menuGetActiveItemExtra();
 
 int menuUp();
 int menuDown();

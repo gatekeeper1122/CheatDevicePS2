@@ -10,11 +10,11 @@
 
 // Open settings file and read settings. Fallback values are used if file was
 // not found or is missing entries.
-int initSettingsMan();
+int initSettings();
 // Free allocated strings.
-int killSettingsMan();
+int killSettings();
 
-// Save setting file with current settings (not used).
+// Save setting file with current settings.
 int settingsSave();
 
 // Get database path string.

@@ -1,13 +1,16 @@
+/*
+ * Text Cheats
+ * Functions to read and write TXT cheat databases.
+ */
+
 #ifndef TEXTCHEATS_H
 #define TEXTCHEATS_H
-#include "cheats.h"
-#include <stdio.h>
 
-// Returns number of games in cheat file.
-int textCheatsOpenFile(const char *path);
-// Get data structure of loaded cheat file. Returns null on error.
-cheatsGame_t *textCheatsGetCheatStruct();
-// Free cheat file from memory.
-int textCheatsClose();
+#include "cheats.h"
+
+// Open TXT cheat database. Returns cheat database structure.
+cheatsGame_t* textCheatsOpen(const char *path, unsigned int *numGamesRead);
+// Save internal cheat database to TXT cheat database.
+int textCheatsSave(const char *path);
 
 #endif

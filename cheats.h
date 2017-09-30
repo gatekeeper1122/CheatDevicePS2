@@ -2,8 +2,10 @@
  * Cheats Manager
  * Manages cheats used by Cheat Device.
  */
+
 #ifndef CHEATS_H
 #define CHEATS_H
+
 #include <tamtypes.h>
 
 typedef enum { TEXT, BINARY } cheatDatabaseType_t;
@@ -28,6 +30,14 @@ typedef struct cheatsCheat {
     u64 *codeLines;
 
     char enabled;
+
+    /*
+    set skip = 1 if:
+    -> cheat has been marked for deletion
+    OR
+    -> cheat is used as an enable cheat
+    */
+    int skip;
     struct cheatsCheat *next;
 } cheatsCheat_t;
 
@@ -35,14 +45,14 @@ typedef struct cheatsGame {
     char title[81];
     unsigned int numCheats;
     cheatsCheat_t *cheats;
+    cheatsCheat_t *enableCheats;
 
     struct cheatsGame *next;
 } cheatsGame_t;
 
-int initCheatMan();
-int killCheatMan();
+int killCheats();
 
-// Open a cheat database and load it's cheats.
+// Open a cheat database and load cheats.
 int cheatsOpenDatabase(const char* path);
 // TODO: Save all cheats to a file.
 int cheatsSaveDatabase(const char* path, cheatDatabaseType_t t);
@@ -60,7 +70,11 @@ cheatsGame_t* cheatsLoadCheatMenu(cheatsGame_t* game);
 int cheatsLoadCodeMenu(const char* game, const char* cheat);
 
 // Create a new game and add it to the game list
-int cheatsAddGame(const char* title);
+int cheatsAddGame();
+// Rename currently selected game from game list
+int cheatsRenameGame();
+// Delete currently selected game from the game list
+int cheatsDeleteGame();
 // TODO: Add a cheat to a game's cheat list
 int cheatsAddCheat(const char *title, cheatsCheat_t *cheat);
 
@@ -70,6 +84,8 @@ void cheatsDrawStats();
 int cheatsToggleCheat(cheatsCheat_t *cheat);
 // Check if a game is the active game.
 int cheatsIsActiveGame(const cheatsGame_t *game);
+// Disable all cheats and deactivate active game
+int cheatsDeactivateGame(cheatsGame_t *game);
 // Set the active game. If any cheats were enabled for the previously active
 // game, they will all be disabled.
 int cheatsSetActiveGame(cheatsGame_t *game);
@@ -77,18 +93,15 @@ int cheatsSetActiveGame(cheatsGame_t *game);
 void cheatsInstallCodesForEngine();
 
 /* used by cheat engine */
-/*
 int (*get_max_hooks)(void);
 int (*get_num_hooks)(void);
 int (*add_hook)(u32 addr, u32 val);
 void (*clear_hooks)(void);
-*/
 
 int (*get_max_codes)(void);
 void (*set_max_codes)(int num);
 int (*get_num_codes)(void);
 int (*add_code)(u32 addr, u32 val);
 void (*clear_codes)(void);
-void (*syscallHook)(void);
 
 #endif

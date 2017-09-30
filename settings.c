@@ -13,11 +13,11 @@ static int initialized = 0;
 static struct ini_info *ini;
 settings_t settings;
 
-int initSettingsMan()
+int initSettings()
 {
     if(!initialized)
     {
-        printf("\n ** Initializing Settings Manager **\n");
+        printf("\n ** Initializing Settings **\n");
 
         #ifdef _DTL_T10000
         ini = ini_load("host:CheatDevicePS2.ini");
@@ -84,7 +84,7 @@ int initSettingsMan()
     return 0;
 }
 
-int killSettingsMan()
+int killSettings()
 {
     if(initialized)
     {
@@ -105,7 +105,30 @@ int settingsSave()
 {
     if(initialized)
     {
-        // TODO: Save the settings
+        FILE *iniFile;
+
+        #ifdef _DTL_T10000
+        iniFile = fopen("CheatDevicePS2.ini", "r");
+        #else
+        iniFile = fopen("host:CheatDevicePS2.ini", "r");
+        #endif
+
+        if(!iniFile)
+        {
+            printf("Error saving CheatDevicePS2.ini\n");
+            return 0;
+        }
+
+        fputs("[CheatDevicePS2]\n", iniFile);
+        fprintf(iniFile, "database = %s\n", settings.databasePath);
+        fprintf(iniFile, "boot1 = %s\n", settings.bootPaths[0]);
+        fprintf(iniFile, "boot2 = %s\n", settings.bootPaths[1]);
+        fprintf(iniFile, "boot3 = %s\n", settings.bootPaths[2]);
+        fprintf(iniFile, "boot4 = %s\n", settings.bootPaths[3]);
+        fprintf(iniFile, "boot5 = %s\n", settings.bootPaths[4]);
+
+        fclose(iniFile);
+
         return 1;
     }
 

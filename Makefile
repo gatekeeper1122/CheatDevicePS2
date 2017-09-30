@@ -25,6 +25,7 @@ OBJS += database.o
 OBJS += textcheats.o
 OBJS += cheats.o
 OBJS += graphics.o
+OBJS += saveutil.o
 OBJS += saves.o
 OBJS += menus.o
 OBJS += settings.o
@@ -54,7 +55,8 @@ ifeq ($(DTL_T10000),1)
 else
 	EE_LIBS += -lpad
 endif
-EE_LIBS += -lgskit_toolkit -lgskit -ldmakit -lc -lkernel -lmc -lpatches -lerl -lcdvd -lz -lkbd
+
+EE_LIBS += -lgskit_toolkit -lgskit -ldmakit -lc -lkernel -lmc -lpatches -lerl -lcdvd -lz -lmf -lkbd
 EE_LDFLAGS += -L$(PS2SDK)/ee/lib -L$(PS2SDK)/ports/lib -L$(GSKIT)/lib -s
 EE_INCS += -I$(GSKIT)/include -I$(PS2SDK)/ports/include
 
@@ -107,8 +109,8 @@ version:
 
 main: $(EE_BIN)
 	rm -f *.o
-	rm -f libraries/*.o
-	rm -f bootstrap/*.elf bootstrap/*.o
+	rm -rf libraries/*.o
+	rm -f bootstrap/*.elf
 
 release: all
 	rm -rf release
@@ -121,8 +123,7 @@ release: all
 
 clean:
 	rm -f *.o *.elf
-	rm -f libraries/*.o
-	rm -f libraries/minizip/*.o
+	rm -rf libraries/*.o
 	rm -f bootstrap/*.elf
 	cd engine && make clean
 

@@ -14,7 +14,6 @@
 #include "libraries/minizip/zip.h"
 #include "libraries/minizip/unzip.h"
 
-static int initialized = 0;
 static device_t currentDevice;
 static int mc1Free, mc2Free;
 
@@ -77,32 +76,6 @@ struct gameSave {
     
     struct gameSave *next;
 };
-
-int initSaveMan()
-{
-    if(!initialized)
-    {
-        printf("\n ** Initializing Save Manager **\n");
-        
-        initialized = 1;
-        return 1;
-    }
-    
-    return 0;
-}
-
-int killSaveMan()
-{
-    if(initialized)
-    {
-        printf("\n ** Killing Save Manager **\n");
-        
-        initialized = 0;
-        return 1;
-    }
-    
-    return 0;
-}
 
 void savesDrawTicker()
 {
@@ -176,23 +149,18 @@ static char *getDevicePath(char *str, device_t dev)
 // Determine save handler by filename.
 static saveHandler_t *getSaveHandler(const char *path)
 {
-    const char *end;
-    int len;
+    const char *extension;
     
     if(!path)
         return NULL;
     
-    len = strlen(path);
-    if(len < 5) // x.xxx
-        return NULL;
+    extension = getFileExtension(path);
     
-    end = path + len - 1;
-    
-    if(strncmp(end - 2, PSUHandler.extention, 3) == 0)
+    if(strcmp(extension, PSUHandler.extention) == 0)
         return &PSUHandler;
-    else if(strncmp(end - 2, CBSHandler.extention, 3) == 0)
+    else if(strcmp(extension, CBSHandler.extention) == 0)
         return &CBSHandler;
-    else if(strncmp(end - 2, ZIPHandler.extention, 3) == 0)
+    else if(strcmp(extension, ZIPHandler.extention) == 0)
         return &ZIPHandler;
     else
         return NULL;
@@ -261,6 +229,7 @@ gameSave_t *savesGetSaves(device_t dev)
             
             save->_handler = handler;
             strncpy(save->name, record.name, 100);
+            rtrim(save->name);
             snprintf(save->path, 64, "mass:%s", record.name);
             
             first = 0;
@@ -365,6 +334,7 @@ gameSave_t *savesGetSaves(device_t dev)
                     }
                     
                     strncpy(save->name, ascii, 100);
+                    rtrim(save->name);
                 }
                 else
                     continue; // invalid save
@@ -386,43 +356,38 @@ gameSave_t *savesGetSaves(device_t dev)
 
 int savesGetAvailableDevices()
 {
-    if(initialized)
+    int mcType, mcFree, mcFormat, ret;
+    int available = 0;
+    
+    // Memory card slot 1
+    mcGetInfo(0, 0, &mcType, &mcFree, &mcFormat);
+    mcSync(0, NULL, &ret);
+    if(ret == 0 || ret == -1)
     {
-        int mcType, mcFree, mcFormat, ret;
-        int available = 0;
-        
-        // Memory card slot 1
-        mcGetInfo(0, 0, &mcType, &mcFree, &mcFormat);
-        mcSync(0, NULL, &ret);
-        if(ret == 0 || ret == -1)
-        {
-            available |= MC_SLOT_1;
-            printf("mem card slot 1 available\n");
-        }
-        mc1Free = mcFree;
+        available |= MC_SLOT_1;
+        printf("mem card slot 1 available\n");
+    }
+    mc1Free = mcFree;
 
-        // Memory card slot 2
-        mcGetInfo(1, 0, &mcType, &mcFree, &mcFormat);
-        mcSync(0, NULL, &ret);
-        if(ret == 0 || ret == -1)
-        {
-            available |= MC_SLOT_2;
-            printf("mem card slot 2 available\n");
-        }
-        mc2Free = mcFree;
-        
-        // Flash drive
-        int f = fioDopen("mass:");
-        if(f > 0)
-        {
-            available |= FLASH_DRIVE;
-            fioDclose(f);
-        }
-        
-        return available;
+    // Memory card slot 2
+    mcGetInfo(1, 0, &mcType, &mcFree, &mcFormat);
+    mcSync(0, NULL, &ret);
+    if(ret == 0 || ret == -1)
+    {
+        available |= MC_SLOT_2;
+        printf("mem card slot 2 available\n");
+    }
+    mc2Free = mcFree;
+    
+    // Flash drive
+    int f = fioDopen("mass:");
+    if(f > 0)
+    {
+        available |= FLASH_DRIVE;
+        fioDclose(f);
     }
     
-    return 0;
+    return available;
 }
 
 void savesLoadSaveMenu(device_t dev)
@@ -443,7 +408,7 @@ void savesLoadSaveMenu(device_t dev)
         menuItem_t *item = calloc(1, sizeof(menuItem_t));
         item->type = HEADER;
         item->text = strdup("Unable to access device.\n");
-        menuAppendItem(item);
+        menuInsertItem(item);
         return;
     }
     
@@ -455,7 +420,7 @@ void savesLoadSaveMenu(device_t dev)
         menuItem_t *item = calloc(1, sizeof(menuItem_t));
         item->type = HEADER;
         item->text = strdup("No saves on this device\n");
-        menuAppendItem(item);
+        menuInsertItem(item);
         return;
     }
     
@@ -465,7 +430,7 @@ void savesLoadSaveMenu(device_t dev)
         item->type = NORMAL;
         item->text = strdup(save->name);
         item->extra = save;
-        menuAppendItem(item);
+        menuInsertItem(item);
         
         gameSave_t *next = save->next;
         save = next;
